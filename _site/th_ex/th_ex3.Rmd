@@ -1,0 +1,475 @@
+---
+title: "Take-home Exercise 3"
+description: |
+  Putting Visual Analytics into practical Use
+author:
+  - name: Raveena Chakrapani
+    url: https://www.linkedin.com/in/raveena-chakrapani-444a60174/
+    affiliation: School Of Computing and Information Systems, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/master-it-business
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message=FALSE, warning = FALSE,
+                      fig.retina = 3)
+```
+
+# 1.Overview
+
+In this Take-home Exercise 3, I have explored economic condition (financial health) of the [<span style="color:blue">**city of Engagement, Ohio USA**</span>](https://vast-challenge.github.io/2022/) by using appropriate static and interactive statistical graphic methods in R. The data is processed by using [<span style="color:blue">**tidyverse**</span>](https://www.tidyverse.org/packages/) family of packages, the statistical graphics are prepared by using [<span style="color:blue">**tidyverse**</span>](https://ggplot2.tidyverse.org/) and the graphs are made interactive by using [<span style="color:blue">**ggiraph.**</span>](https://davidgohel.github.io/ggiraph//) & [<span style="color:blue">**plotly**</span>](https://plotly.com/r/)
+
+# 2.Task
+**Economic** considers the financial health of the city. The financial health of a city is closely intertwined with that of its residents. Hence, the objective of this exercise is  to visualize the answers for the following questions:
+
++ How does the financial health of the residents change over the period covered by the dataset? 
++ How do wages compare to the overall cost of living in Engagement?
++ Are there groups that appear to exhibit similar patterns?
+
+# 3.Getting Started
+### 3.1 Data
+The dataset used in this exercise is *FinancialJournal.csv* file which contains information of the  amount the residents have spent for each category such as education, food, shelter and recreation.
+Link to download the dataset is found below
+
+[Download FinancialJournal](data/FinancialJournal.csv)
+
+### 3.2 Installing and loading the required libraries
+Before we get started, it is important for us to ensure that the required R packages have been installed. If yes, we will load the R pacakges. If they have yet to be installed, we will install the R packages and load them onto R environment.
+
+The code chunk below is used to install and load the required packages onto RStudio.
+
+
+```{r}
+packages = c('tidyverse','ggplot2','dplyr','plotrix','plyr','patchwork','ggthemes','hrbrthemes',
+             'trelliscopejs','lubridate','tidyr','CGPfunctions','ggExtra','ggridges','plotly','ggiraph','DT','gganimate','imputeTS','esquisse','GGally', 'parcoords','timetk','viridis','zoo')
+for(p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+}
+
+```
+
+### Importing data
+The code chunk below imports *FinancialJournal.csv* from the data folder into R by using [`read_csv()`](https://readr.tidyverse.org/reference/read_delim.html) of [<span style="color:blue">**readr**</span>](https://readr.tidyverse.org/index.html) and save it as an tibble data frame called *data*
+
+
+```{r}
+# read csv file
+data <- read_csv("data/FinancialJournal.csv")
+```
+
+### Dataset Description
+
+```{r, echo=FALSE}
+head(data)
+```
+
+This dataset contains the following information about financial transactions:
+
++ participantId (integer): unique ID corresponding to the participant affected
++ timestamp (datetime): the time when the check-in was logged
++ category (string factor): a string describing the expense category, one of
+{“Education”, “Food”, “Recreation”, “RentAdjustment”, “Shelter”, “Wage”}
++ amount (double): the amount of the transaction  
+
+Negative values in the amount column represent expenses(resident spent) and positive values represent income (resident gained)
+
+### 4. How does the financial health of the residents change over the period covered by the dataset?
+
+In this section, let's try to understand how the amount spent by residents change for each category over the period March 2022 - May 2023.
+
+### Data Wrangling
+Let's first manipulate the data and derive new columns for visualization.
+
+### Deriving date, month and year from timestamp
+
+Date information is extracted from the timestamp attribute using [`as.Date()`](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/as.Date).Similarly, month and year information is extracted from date. The below code chunk accomplishes this task.
+
+```{r}
+data$date <- as.Date(data$timestamp)
+data$month <- factor(month(data$date), 
+                     levels=1:12, 
+                     labels=month.abb, 
+                     ordered=TRUE) 
+data$year <- year(ymd(data$date))
+data$Month_Yr <- format(as.Date(data$date), "%Y-%m")
+
+min(data$date)
+max(data$date)
+```
+
+This shows that the dataset has information about the residents from **March 2022 to May 2023 (15 months)**
+
+### Absolute Amount
+
+As we know that Eduation, Food, Shelter, Recreation comes under expense category and Wage, Rent Adjustment are the income categories, for simplicity, let's discard the sign and take the absolute value of the amount which will be easier for our comparison analysis. Also, the amount values are rounded off.  
+
+The below code performs the task and some of the functions used in the code chunk are  
+(<span style="color:blue">`abs()`</span>)[https://www.rdocumentation.org/packages/SparkR/versions/2.1.2/topics/abs] - Computes the absolute value  
+(<span style="color:blue">`round()`</span>)[https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/Round] - round off a no. to mentioned decimal digits.
+
+```{r}
+
+data$amount <- abs(data$amount)
+data$amount <- round(data$amount,digits=0)
+data <- data[,c(1,2,5,6,7,8,3,4)] # rearranging the columns
+head(data)
+```
+### Data Manipulation
+
+Let's compute the total amount spent/ received by each participant in each category at each timeframe of the year. Then, the long format data is converted to wide format using [<span style="color:blue">`pivot_wider()`</span>](https://tidyr.tidyverse.org/reference/pivot_wider.html)
+NA values in the dataframe are replaced by 0 for accurate calculation.
+Also, new attribute called *cost_of_living* is calculated by adding the values of amount spent in *Food, Education, Shelter, Recreation*.
+
+```{r}
+
+data_by_year <- data %>%
+  group_by(participantId, category,Month_Yr) %>%
+  dplyr :: summarise(Total = sum(amount))
+
+wide_fmt_year <- pivot_wider(data_by_year,names_from = category,values_from =Total)
+wide_fmt_year <- na_replace(wide_fmt_year,0)
+
+wide_fmt_year$cost_of_living <- wide_fmt_year$Education + wide_fmt_year$Food + wide_fmt_year$Recreation +wide_fmt_year$Shelter +wide_fmt_year$RentAdjustment
+
+DT::datatable(wide_fmt_year, class= "compact")
+```
+Data objects in R can be rendered as HTML tables using the JavaScript library 'DataTables'. 
+This table is interactive, where you can filter he columns and search the desired values by typing in in the search box at the right.
+
+### Wage distribution over the timeline
+
+To get a overall picture of wage over the timeline, wage category from the dataset is filtered and the below code accomplishes the task
+
+```{r, fig.width= 10}
+wage_data <- data %>% 
+              filter(category=="Wage")
+ridge_plt <- ggplot(wage_data, aes(x = amount, y = Month_Yr, fill = ..x..)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_fill_viridis_c(name = "Amount", direction = -1) +
+  xlim(0,1000) +
+  theme(axis.title.y=element_text(angle=0),
+      axis.line = element_line(color='grey'), plot.title = element_text(hjust = 0.5),
+      axis.title.y.left = element_text(vjust = 0.5,), axis.text = element_text(face="bold")) +
+  labs(x= "Amount",y= "Time Period",title="How wage is distributed over the period ?")
+
+ridge_plt
+
+```
+
+
++ The above chart shows the distribution is quite similar across all months except March 2022 
++ Also, it reveals that The monthly income is predominantly below 500
+
+
+Let's look into some details of timeline chart to understand much about the variations or patterns.The below code chunk helps us to visualise the wage distribution of residents over the entire timeframe. Then excluding the first month as it is difficult to understand the patterns of other months due to its high range. Finally, the wage distribution of March 2022 to see what are the dates when residents are paid high. 
+
+```{r, echo=FALSE}
+date_wage_df <- data %>%
+  filter(category=="Wage") %>%
+  group_by(date) %>%
+  dplyr::summarise(tot_amt = sum(amount)) %>%
+  select(date,tot_amt)
+```
+
+```{r, fig.width=8, fig.height=10}
+
+options(scipen = 999)
+
+tp1 <- ggplot(date_wage_df, aes(x=date, y=tot_amt)) +
+       geom_line()+
+  theme(axis.title.y=element_text(angle=0), axis.ticks.x=element_blank(),
+       axis.line = element_line(color='grey'), plot.title = element_text(hjust = 0.5), 
+      axis.title.y.left = element_text(vjust = 0.5), axis.text = element_text(size=8,face="bold"))+
+  labs(x= "Timeframe",y= "Wage",title="Wage distribution over the entire period ")
+  
+
+filt_date_wage_df <- date_wage_df[-1,]
+tp2 <- ggplot(filt_date_wage_df, aes(x=date, y=tot_amt)) +
+       geom_line()+
+  theme(axis.title.y=element_text(angle=0), axis.ticks.x=element_blank(),
+      axis.line = element_line(color='grey'), plot.title = element_text(hjust = 0.5), 
+      axis.title.y.left = element_text(vjust = 0.5), axis.text = element_text(size=8,face="bold"))+
+  labs(x= "Timeframe",y= "Wage",title="Wage distribution excluding March 2022 ")
+
+filt2_date_wage_df <- date_wage_df %>%
+  filter(date >= "2022-03-01" & date <= "2022-03-31") 
+tp3 <- ggplot(filt2_date_wage_df, aes(x=date, y=tot_amt)) +
+       geom_line()+
+  theme(axis.title.y=element_text(angle=0), axis.ticks.x=element_blank(),
+      axis.line = element_line(color='grey'), plot.title = element_text(hjust = 0.5), 
+      axis.title.y.left = element_text(vjust = 0.5), axis.text = element_text(size=8,face="bold"))+
+  labs(x= "Timeframe",y= "Wage",title="Wage distribution of March 2022 ")
+
+tp1/tp2/tp3
+
+```
+
+### Insights
+
+This chart reveals that in the month of March 2022, residents are getting paid high especially in the first 7 days March 1-7 
+
+### Income by individual participant
+
+Let's zoom in and look at each participant's financial health by comparing their income and cost of living at each time frame of the year. [<span style="color:blue">**Trelliscope**</span>](https://hafen.github.io/trelliscopejs/index.html) makes small multiple displays come alive by providing the ability to interactively sort and filter the plots based on summary statistics computed for each group.
+
+```{r}
+wide_fmt_year %>% 
+ggplot(aes(Month_Yr, Wage) ) +
+  geom_point(aes(size=cost_of_living), show.legend = TRUE)+
+  theme_bw() +
+  labs(y= 'Income', x='Time Period', fill = "Expense") +
+theme(axis.title.y=element_text(angle=0), axis.ticks.x=element_blank(),axis.text.x = element_text(angle=45, hjust=1),
+      axis.line = element_line(color='grey'), plot.title = element_text(hjust = 0.5),
+      axis.title.y.left = element_text(vjust = 0.5), axis.text = element_text(face="bold")) +
+  facet_trelliscope(~ participantId, nrow = 1, ncol = 3, width = 600, path="trellis/", self_contained = TRUE)
+```
+### Insights
+
++ The graph shows that majority of the residents get high pay during March 2022.
++ It gradually reduces from then.
++ Also, the size of the dot indicates the amount spent as an expense. So, it's obvious from the chart that people who gets higher pay tends to spend more for cost of living.
+
+### Month wise Intensity
+
+To get a user friendly view of the months where many residents are getting paid, the following visualisation will be helpful. This code chunk comprises of both tooltip and hovering feature  
+
+Interactivity: Elements associated with a data_id (i.e Month & Year) will be highlighted upon mouse over. At the same time, the tooltip will show the timeframe (i.e Month & Year)
+
+
+```{r}
+
+wide_fmt_year$tooltip <- c(paste0(
+  "Period = ", wide_fmt_year$Month_Yr))
+  
+p <- ggplot(data=wide_fmt_year, 
+       aes(x = Wage)) +
+  geom_dotplot_interactive(              
+    aes(tooltip = wide_fmt_year$tooltip,
+        data_id = wide_fmt_year$tooltip),
+    stackgroups = TRUE,  
+    dotsize=0.2,
+    binwidth = 120,                        
+    method = "histodot") +  
+  labs(title="Month wise Wage distribution")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_y_continuous(NULL,               
+                     breaks = NULL)
+
+girafe(                                  
+  ggobj = p,                             
+  width_svg = 6,                         
+  height_svg = 6*0.618 ,
+  options = list(                        
+    opts_hover(css = "fill: #202020;"),  
+    opts_hover_inv(css = "opacity:0.2;")
+  )                                        
+)
+```
+
+Hovering on the above chart gives us the picture that in some of the months August,November less no. of residents are getting paid on the other hand and the wage is also low whereas in the months of March, April more no. of residents are paid and the range is spread out.
+
+
+### 5. How do wages compare to the overall cost of living in Engagement?
+
+Now that we have seen how wages among the residents change over a period of time, Let's explore how income of residents is related to their cost of living (comparison).
+
+### Proportion of each category
+
+Firstly, let's visualize how much each residents spend for each category by using interactive [<span style="color:blue">**sunburst charts**</span>](https://plotly.com/r/sunburst-charts/) charts of `plotly()` package.
+
+```{r, echo=FALSE}
+total = sum(data$amount)
+cat_wise_data <- data %>%
+  group_by(category) %>% 
+  dplyr::summarise(sum_amt =sum(amount))
+cat_wise_data <- cat_wise_data %>%
+  mutate( prop=round((sum_amt/total)*100, digits = 2)) %>%
+  ungroup()
+```
+
+
+```{r}
+fig <- plot_ly(
+  labels = c("Money", "Expense", "Shelter", "Recreation", "Food", "Education", "Income", "Rent Adj","Wage"),
+  parents = c("", "Money", "Expense", "Expense", "Expense", "Expense", "Money", "Income", "Income"),
+  values = c(100,25.17, 12.07, 6.67, 6.17, 0.25,74.83, 0.07, 74.76),
+  type = 'sunburst',
+  branchvalues = 'total'
+)
+
+fig
+```
+
+### Insights
+
+The above chart reveals that among the expense category, residents spend much for shelter.  
+
+### Wage Distribution vs Shelter
+
+As we got an insight from previous chart that among expense, shelter holds the major chunk, lets deep dive into its distribution and how it is related with wage distribution.
+
+```{r, echo = FALSE}
+data_by_part <- data %>%
+  group_by(participantId, category) %>%
+  dplyr :: summarise(Total = sum(amount))
+
+wide_fmt <- pivot_wider(data_by_part,names_from = category,values_from =Total)
+wide_fmt <- na_replace(wide_fmt,0)
+
+wide_fmt$cost_of_living <- wide_fmt$Education + wide_fmt$Food + wide_fmt$Recreation +wide_fmt$Shelter +wide_fmt$RentAdjustment
+```
+```{r}
+ws_plot <- ggplot(wide_fmt, aes(x=Wage, y=Shelter)) + geom_point()+
+  theme(axis.title.y=element_text(angle=0),
+       axis.line = element_line(color='grey'), plot.title = element_text(hjust = 0.5), 
+      axis.title.y.left = element_text(vjust = 0.5), axis.text = element_text(size=8,face="bold"))+
+  labs(x= "Wage",y= "Shelter",title="Wage vs Shelter")
+
+```
+```{r}
+sh_hist <- wide_fmt %>%
+  
+  ggplot( aes(x=Shelter)) +
+    geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
+    ggtitle("Bin size = 3") +
+    theme_ipsum() +
+    theme(axis.title.y=element_text(angle=0),panel.background = element_blank(),
+      axis.line = element_line(color='grey'), plot.title = element_text(size=8,hjust = 0.5),
+      axis.title.y.left = element_text(vjust = 0.5),
+      axis.title.x = element_text(hjust = 0.5),
+      axis.text = element_text(size=8,face="bold"))+
+    labs(x="Shelter Amount", y="Residents", title="Shelter Distribution")
+
+
+wg_hist <- wide_fmt %>%
+  
+  ggplot( aes(x=Wage)) +
+    geom_histogram(fill="#69b3a2", color="#e9ecef", alpha=0.9) +
+    ggtitle("Bin size = 3") +
+    theme_ipsum() +
+    theme(axis.title.y=element_text(angle=0),panel.background = element_blank(),
+      axis.line = element_line(color='grey'), plot.title = element_text(size=8,hjust = 0.5),
+      axis.title.y.left = element_text(vjust = 0.5),
+      axis.title.x = element_text(hjust = 0.5),
+      axis.text = element_text(size=8,face="bold"))+
+    labs(x="Wage", y="Residents", title="Wage Distribution")
+
+```
+```{r, fig.width=11, fig.height=7}
+
+pw <- ((wg_hist / sh_hist) | ws_plot) + 
+  plot_annotation(tag_levels = 'I') 
+
+pw 
+```
+
+### Insights
+Plots I & II shows the individual distribution of Wage and Shelter. The histograms clearly reveal that distributions of both wage and shelter are different. Wage distribution is not normal. It's right skewed and the majority of value lies below 100K.On the other hand shelter graph distribution is comparatively normal and predominant values lie between 5K and 15K. And the plot III reveals interesting info that residents fall under both the extreme ends as people who gets wage less than 100K als spend till 20K for shelter and there are people who gets extremely high pay (> 200K) but still chose to spend below 10K for shelter.
+
+### Detailed Analysis
+
+Through static charts, we got an overall view. But let's zoom in and understand the pattern of each and every resident. It's feasible with the help of **Linked Brushing crosstalk method**. The below code chunk uses some of these important functios  
++ [<span style="color:blue">**`highlight()`**</span>](https://plotly-r.com/client-side-linking.html) function of plotly package sets a variety of options for brushing
++ [<span style="color:blue">**`bscols()`**</span>](https://www.rdocumentation.org/packages/crosstalk/versions/1.2.0/topics/bscols) is a helper function of crosstalk package. It makes it easy to put HTML elements side by side. 
+ 
+```{r}
+d <- highlight_key(wide_fmt)
+p <- ggplot(d, 
+            aes(Wage, 
+                Shelter)) + 
+  geom_point(size=1)+
+  theme(axis.title.y=element_text(angle=0))
+
+gg <- highlight(ggplotly(p),
+                "plotly_selected")
+crosstalk::bscols(gg,
+                  DT::datatable(d),
+                  widths = 5)
+
+```
+
+### Insights
+
+Hovering on the graph provides wage and shelter amount. But if we select cluster of points, we also acquire the resident's other information due to the corresponding linked table. By using **box select** feature, if we crop a point at the right end, the corresponding table filters the details and we get to know that participants who earn medium wage also spends quite a lot for shelter. 
+
+
+
+### Density Distribution of Wage vs Cost of Living
+
+The below code chunk helps us to provide an outline of Wage and cost of living of residents.  
+
+
+```{r}
+
+gg1<- ggplot(data=wide_fmt, 
+       aes(x = Wage)) +
+  geom_density()+
+  theme(axis.title.y=element_text(angle=0), axis.ticks.x=element_blank(),
+       axis.line = element_line(color='grey'), plot.title = element_text(hjust = 0.5), 
+      axis.title.y.left = element_text(vjust = 0.5), axis.text = element_text(size=8,face="bold"))+
+  #scale_x_continuous(labels = comma)+
+  labs(x= "Wage",y= "Density",title="Wage Distribution")
+
+gg2<- ggplot(data=wide_fmt, 
+       aes(x = cost_of_living)) +
+  geom_density()+
+  theme(axis.title.y=element_text(angle=0), axis.ticks.x=element_blank(),
+       axis.line = element_line(color='grey'), plot.title = element_text(hjust = 0.5), 
+      axis.title.y.left = element_text(vjust = 0.5), axis.text = element_text(size=8,face="bold"))+
+  labs(x= "Cost of Living",y= "Density",title="Cost of Living Distribution")
+
+
+gg1 / gg2
+```
+
+### Insights
+
+Both the graphs are different from each other in terms of distribution as income curve is right skewed whereas cost of living graph is left skewed which means mean is greater than median in the former curve and vice versa in the latter curve.
+
+
+### 6. Are there groups that appear to exhibit similar patterns?
+
+Yes, based on the previous analysis, following are the insights
+
+
++ Majority of the residents get high pay during March 2022 and it gradually reduces from then.
++ Also, the size of the dot indicates the amount spent as an expense. So, it's obvious from the chart that people who gets higher pay tends to spend more for cost of living.
+
+
+### Detailed view of each & every participant
+
+Now let's have a look at how each and every resident spends for shelter and the wage received considering cost of living as point size
+
+```{r}
+ggplot(wide_fmt, aes(x=Wage, y=Shelter,
+                          size= cost_of_living))+
+  geom_point(apha = 0.7,
+             show.legend = FALSE)+
+  scale_size(range=c(2,12))+
+  labs(title = 'Participant Id: {round(frame_time)}',
+       x="Wage",
+       y="Shelter") +
+  theme(axis.title.y=element_text(angle=0), axis.ticks.x=element_blank(),
+       axis.line = element_line(color='grey'),
+       axis.title.y.left = element_text(vjust = 0.5))+
+  transition_time(participantId) +
+  ease_aes('linear')
+```
+### Insights
+
+This animation helps us to understand that first quarter of residents i.e., participants of particpants Id (0-200) gets wage in all ranges. Its spread out among both the axes. But majority of others get paid below 100K which is in line with our previous analysis. Also, the size of the circle determines cost of living. Dot sizes are greater for residents who gets paid more and who spends more for shelter (its obvious as shelter is one of the expense category of cost living)
+
+
+### 7. Learning Points
+
+Working on this Take Home Exercise was pretty interesting as it involved interactivity. Static graphs have the limitation to visualise the huge data. Also, animation provides the user clear picture of changes over time as it changes with respect to frame time. Other interactivity features such as hovering, data id of ggiraph are user friendly and coordinated multiple views play a vital role in comparison for 2 categories against same individual. Also, linked brushing crosstalk method is quite helpful when we need to  filter out and view the reflected changes simultaneously.
+
+
+
+
+
+

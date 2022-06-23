@@ -1,0 +1,75 @@
+---
+title: "In-Class Exercise 4"
+description: |
+  Incorporating Statistics in Visualisation 
+author:
+  - name: Raveena Chakrapani 
+    url: https://www.linkedin.com/in/raveena-chakrapani-444a60174/
+    affiliation: School Of Computing and Information Systems, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/master-it-business
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message=FALSE, warning = FALSE,
+                      fig.retina = 3)
+```
+## Getting Started
+
+### Installing and loading required packages
+
+Before we get started, it is important for us to ensure that the required R packages have been installed. If yes, we will load the R pacakges. If they have yet to be installed, we will install the R packages and load them onto R environment.The required packages are **tidyverse**, [<span style="color:blue">**ggstatplot**</span>](https://indrajeetpatil.github.io/ggstatsplot/index.html)
+
+```{r}
+packages = c('ggstatsplot','tidyverse','rstantools')
+for (p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+}
+```
+
+### Importing Data
+
+The code chunk below imports *Exam_data* from the data folder into R by using [`read_csv()`](https://readr.tidyverse.org/reference/read_delim.html) of [<span style="color:blue">**readr**</span>](https://readr.tidyverse.org/index.html) and save it as an tibble data frame called *data*
+
+
+```{r}
+# read csv file
+exam <- read.csv("data/Exam_data.csv")
+head(exam)
+```
+
+### Working with ggstatplot
+
+### Annova Test
+### (i) Non Parameteric Test
+
+```{r, fig.width=6, fig.height=8}
+
+
+ggbetweenstats(
+  data = exam,
+  x = RACE, 
+  y = ENGLISH,
+  type = "np")+
+  labs(title = "One-way ANNOVA Test - Non-parametric")+
+  theme(axis.title.y=element_text(angle=0),axis.title.y.left = element_text(vjust=0.5),
+        plot.title=element_text(hjust = 0.5))
+
+```
+### (ii) Bayes Test
+
+```{r, fig.width=6,fig.height=8}
+
+ggbetweenstats(
+  data = exam,
+  x = RACE, 
+  y = ENGLISH,
+  type = "bayes")+
+  labs(title = "One-way ANNOVA Test - Bayes")+
+  theme(axis.title.y=element_text(angle=0),axis.title.y.left = element_text(vjust=0.5),
+        plot.title=element_text(hjust = 0.5))
+
+```

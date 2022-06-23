@@ -1,0 +1,84 @@
+---
+title: "In-ClassEx 3"
+author: "Raveena"
+date: '2022-04-30'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### Loadig necessary packages
+```{r}
+packages = c('ggiraph', 'plotly', 
+             'DT', 'patchwork',
+             'gganimate', 'tidyverse',
+             'readxl', 'gifski', 'gapminder',
+             'treemap', 'treemapify',
+             'rPackedBar')
+for (p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p,character.only = T)
+}
+```
+### Importing data
+```{r}
+GDP <- read_csv("data/GDP.csv")
+WorldCountry <- read_csv("data/WorldCountry.csv")
+```
+### Data Preparation
+```{r}
+GDP_selected <- GDP %>%
+  mutate(Values = as.numeric(`2020`)) %>%
+  select(1:3, Values) %>%
+  pivot_wider(names_from = `Series Name`,
+              values_from = `Values`) %>%
+  left_join(y=WorldCountry, by = c("Country Code" = "ISO-alpha3 Code"))
+```
+### visualising the data using tree map
+```{r}
+treemap(GDP_selected,
+        index=c("Continent", "Country Name"),
+        vSize="GDP (current US$)",
+        vColor="GDP (current US$)",
+        title="GDP (current US$) , 2020",
+        title.legend = "GDP per capita (current US$)"
+        )
+```
+
+### Working with vColor and type arguments
+```{r}
+treemap(GDP_selected,
+        index=c("Continent", "Country Name"),
+        vSize="GDP (current US$)",
+        vColor="GDP per capita (current US$)",
+        type = "value",
+        title="GDP (current US$) , 2020",
+        title.legend = "GDP per capita (current US$)"
+        )
+```
+
+### Working with three layout
+```{r}
+treemap(GDP_selected,
+        index=c("Continent", "Country Name"),
+        vSize="GDP (current US$)",
+        vColor="GDP per capita (current US$)",
+        type = "value",
+        algorithm = "squarified",
+        title="GDP (current US$) , 2020",
+        title.legend = "GDP per capita (current US$)"
+        )
+```
+
+### Interactive tree map
+#### Installing packages
+```{r}
+library(devtools)
+install_github("timelyportfolio/d3treeR")
+```
+```{r}
+
+```

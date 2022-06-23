@@ -1,0 +1,412 @@
+---
+title: "Take-home Exercise 4"
+description: |
+ Putting Visual Analytics into Practical Use
+author:
+  - name: Raveena Chakrapani
+    url: https://www.linkedin.com/in/raveena-chakrapani-444a60174/
+    affiliation: School Of Computing and Information Systems, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/master-it-business
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message=FALSE, warning = FALSE,
+                      fig.retina = 3)
+```
+
+
+# 1. Overview
+
+In this Take-home Exercise 4, I have explored daily routines of the [<span style="color:blue">**city of Engagement, Ohio USA**</span>](https://vast-challenge.github.io/2022/) residents by using 
+[<span style="color:blue">**ViSiElse**</span>](https://cran.r-project.org/web/packages/ViSiElse/index.html) and other appropriate Visual Analytics methods in R. The data is processed by using [<span style="color:blue">**tidyverse**</span>](https://www.tidyverse.org/packages/) family of packages, the statistical graphics are prepared by using [<span style="color:blue">**tidyverse**</span>](https://ggplot2.tidyverse.org/) and the graphs are made interactive by using [<span style="color:blue">**ggiraph.**</span>](https://davidgohel.github.io/ggiraph//) & [<span style="color:blue">**plotly**</span>](https://plotly.com/r/)
+
+# 2. Task
+**Patterns of Life** considers the patterns of daily life throughout the city. 
+
++ Choose two different participants with different routines and describe their daily patterns, with supporting evidence.  
+
++ Describe the daily routines for some representative people, characterize the travel patterns to identify potential bottlenecks or hazards.  
+
++ Examine how these patterns change over time and seasons.
+
+# 3. Getting Started
+### Data
+
+As there are multiple csv files of *PatricipantStatusLogs* with similar data structure and naming convention, lets import and combine these files into a single tibble data table.Once combined, let's select two participant details and save the output as separate csv file.
+
+```{r, echo = FALSE, eval = FALSE}
+packages = c('tidyverse', 'data.table')
+
+for(p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+}
+```
+
+```{r,echo = FALSE, eval= FALSE}
+logs_fread <- list.files(path = "./data/ActivityLogs/",
+                  pattern = "*.csv", 
+                  full.names = T) %>% 
+  map_df(~fread(.))
+saveRDS(logs_fread,'participants.rds')
+participants <- readRDS('participants.rds')
+```
+
+```{r, eval=FALSE}
+filt_participants <- participants %>% 
+  filter(participantId == 10 | participantId == 25)
+
+fwrite(filt_participants,
+     file= "data/two_participants.csv",
+      sep = ",")
+
+#writeLines(gsub("\t", ",", readLines("two_participants.csv")), "myfile.csv")
+```
+
+### Installing and loading the required libraries
+Before we get started, it is important for us to ensure that the required R packages have been installed. If yes, we will load the R pacakges. If they have yet to be installed, we will install the R packages and load them onto R environment.
+
+The code chunk below is used to install and load the required packages onto RStudio.
+
+
+```{r}
+packages = c('tidyverse','ggplot2','dplyr','plyr','ggthemes','hrbrthemes',
+             'lubridate','tidyr','gganimate','imputeTS', 'timetk','viridis','ViSiElse','calendR','sf','knitr', 'tmap','sftime','rmarkdown','clock')
+
+for(p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+}
+
+```
+
+### Importing data
+The code chunk below imports the final filtered data of 2 participants *two_participants.csv* from the data folder into R by using [`read_csv()`](https://readr.tidyverse.org/reference/read_delim.html) of [<span style="color:blue">**readr**</span>](https://readr.tidyverse.org/index.html) and save it as an tibble data frame called *data*
+
+
+```{r}
+data <- read_csv("data/two_participants.csv")
+```
+
+### Extracting date, month, week no. from timestamp data
+
+Date information is extracted from the timestamp attribute using [`as.Date()`](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/as.Date).Similarly, month, year, week information is extracted from date. The below code chunk accomplishes this task.
+
+```{r}
+data$date <- as.Date(data$timestamp)
+data$month <- factor(month(data$date), 
+                     levels=1:12, 
+                     labels=month.abb, 
+                     ordered=TRUE) 
+data$day <- weekdays(data$date)
+data$year <- year(ymd(data$date))
+data$week <- week(data$date)
+data$Year_Mon <- format(as.Date(data$date), "%Y-%m")
+data$Time <- format(as.POSIXct(data$timestamp),format = "%H:%M:%S")
+res <- hms(data$Time)        # format to 'hours:minutes:seconds'
+data$minutes <- hour(res)*60 + minute(res)       # convert hours to minutes, and add minutes
+```
+```{r}
+visielse_data <- data %>% 
+  select(participantId, date, currentMode, hungerStatus, sleepStatus, minutes) %>%
+  group_by(date)
+kable(head(visielse_data))
+```
+### Daily routine of Participants
+
+Let's visual daily life of participants by using [<span style="color:blue">**ViSiElse**</span>](https://cran.r-project.org/web/packages/ViSiElse/vignettes/ViSiElSe_Paper_Walkthrough.html) package. It is specially designed for visualising behavioral observation over time.
+
+```{r, fig.show='hide'}
+sample_sleep <- visielse_data %>% 
+  filter(date == "2022-03-01") %>%
+  select(participantId,sleepStatus,minutes) %>%
+  group_by(participantId,sleepStatus) %>%
+  dplyr::summarise(value = min(minutes))
+
+
+wide_sample_sleep <- pivot_wider(sample_sleep,names_from = sleepStatus,values_from =value)
+
+sample_hunger <- visielse_data %>% 
+  filter(date == "2022-03-01") %>%
+  select(participantId,hungerStatus,minutes)%>%
+  group_by(participantId, hungerStatus) %>%
+  dplyr::summarise(value = mean(minutes))
+wide_sample_hunger <- pivot_wider(sample_hunger,names_from = hungerStatus,values_from =value)
+
+sample_mode <- visielse_data %>% 
+  filter (date == "2022-03-01") %>%
+  select(participantId,currentMode,minutes)%>%
+  group_by(participantId, currentMode) %>%
+  dplyr::summarise(value = mean(minutes))
+wide_sample_mode <- pivot_wider(sample_mode,names_from = currentMode,values_from =value)
+full <- merge(x = wide_sample_sleep, y = wide_sample_hunger, by = "participantId", all = TRUE)
+full1 <- merge(x = full, y = wide_sample_mode, by = "participantId", all = TRUE)
+full1 <- full1[,c(4,2,10,6,14,13,7,12,11,3)]
+p1 <- visielse(full1)
+```
+```{r}
+plot(p1, vp0w = 0.7, unit.tps = "min", scal.unit.tps = 30, main = "Weekday Routine") 
+```
+### Insights
+
++ It is observed that the participants are punctual in waking up, but the span in the graph shows due to participant who have irregular sleep pattern. That is the participant awakes often during the sleep.
+
++ And as its weekday, the work time is also punctual.
+
++ During weekdays, participants remain hungry for long time.
+
+```{r, fig.show='hide'}
+sample_sleep <- visielse_data %>% 
+  filter(date == "2022-03-27") %>%
+  select(participantId,sleepStatus,minutes) %>%
+  group_by(participantId,sleepStatus) %>%
+  dplyr::summarise(value = min(minutes))
+
+
+wide_sample_sleep <- pivot_wider(sample_sleep,names_from = sleepStatus,values_from =value)
+
+sample_hunger <- visielse_data %>% 
+  filter(date == "2022-03-27") %>%
+  select(participantId,hungerStatus,minutes)%>%
+  group_by(participantId, hungerStatus) %>%
+  dplyr::summarise(value = mean(minutes))
+wide_sample_hunger <- pivot_wider(sample_hunger,names_from = hungerStatus,values_from =value)
+
+sample_mode <- visielse_data %>% 
+  filter (date == "2022-03-27") %>%
+  select(participantId,currentMode,minutes)%>%
+  group_by(participantId, currentMode) %>%
+  dplyr::summarise(value = mean(minutes))
+wide_sample_mode <- pivot_wider(sample_mode,names_from = currentMode,values_from =value)
+full_27 <- merge(x = wide_sample_sleep, y = wide_sample_hunger, by = "participantId", all = TRUE)
+full1_27 <- merge(x = full_27, y = wide_sample_mode, by = "participantId", all = TRUE)
+full1_27 <- full1_27[,c(4,2,10,6,7,12,11,13,3)]
+p2 <- visielse(full1_27) 
+```
+```{r}
+
+plot(p2, vp0w = 0.7, unit.tps = "min", scal.unit.tps = 30, main = "Weekend Routine") 
+```
+### Insights
+
++ It is observed that during weekend, one participant is preparing to sleep before 12:00 am whereas the other participant is sleeping late.
+
++ They spent varying time in restaurant and recreation.
+
++ Also, they don't work during weekend.
+
+```{r, fig.show='hide'}
+sample_sleep <- visielse_data %>% 
+  filter(date == "2022-03-18") %>%
+  select(participantId,sleepStatus,minutes) %>%
+  group_by(participantId,sleepStatus) %>%
+  dplyr::summarise(value = mean(minutes))
+
+wide_sample_sleep <- pivot_wider(sample_sleep,names_from = sleepStatus,values_from =value)
+
+sample_hunger <- visielse_data %>% 
+  filter(date == "2022-03-18") %>%
+  select(participantId,hungerStatus,minutes)%>%
+  group_by(participantId, hungerStatus) %>%
+  dplyr::summarise(value = mean(minutes))
+wide_sample_hunger <- pivot_wider(sample_hunger,names_from = hungerStatus,values_from =value)
+sample_mode <- visielse_data %>% 
+  filter (date == "2022-03-18") %>%
+  select(participantId,currentMode,minutes)%>%
+  group_by(participantId, currentMode) %>%
+  dplyr::summarise(value = mean(minutes))
+wide_sample_mode <- pivot_wider(sample_mode,names_from = currentMode,values_from =value)
+full_18 <- merge(x = wide_sample_sleep, y = wide_sample_hunger, by = "participantId", all = TRUE)
+full1_18 <- merge(x = full_27, y = wide_sample_mode, by = "participantId", all = TRUE)
+
+full1_18 <- full1_18[,c(4,2,6,14,13,7,12,11)]
+p3 <- visielse(full1_18)
+```
+
+```{r}
+
+plot(p3, vp0w = 0.7, unit.tps = "min", scal.unit.tps = 30, main = "Friday Routine") 
+```
+
+### Insights
+
++ Friday routine has got a combination of characteristics of weekday as well as weekend.
+
++ They do work ans spend sufficient time at restaurant.
+
++ Interestingly, the time (end of the day) which is mostly spent for preparing to sleep is spent for recreation during friday nights as they may not have to go to work the next day.
+
+### Budget Analysis
+
+As we have seen in the above graphs that participants spend quite a good amount of time in restaurant and recreation. Let's look at the budget which they have allocated every week.
+
+```{r}
+weekly_df_2022 <- data %>%
+  filter(year==2022) %>%
+  group_by(participantId,week) %>%
+  dplyr::summarise(val = round(mean(weeklyExtraBudget),0))
+
+`Participant Id` <- factor(weekly_df_2022$participantId)
+
+plot10 <- ggplot(weekly_df_2022,aes(x=week, y=val)) + 
+  geom_line(aes(colour=`Participant Id`))+
+theme(axis.title.y=element_text(angle=0),axis.line = element_line(color='grey'), plot.title = element_text(hjust = 0.5), axis.title.y.left = element_text(vjust = 0.5), text = element_text(size=10,face="bold")) +
+  ylim(0,30000)+
+  guides(fill=guide_legend(title="Participant Id"))+
+labs(y= 'Budget\n Amount',title="Weekly Extra Budget", x='Week No.')
+
+
+plot10+transition_reveal(as.numeric(week))
+```
+### Insights
+
++ It can be seen that Overall with every week, the budget amount increases. 
+
++ But if we look at in detail, the budget attain its peak and decreases the very next week.
+
++ Both the participants show similar trend, between the two, Participant Id 10 has more budget per week.
+
+
+### Bank Balance Analysis
+
+As we have seen the budget of participants, let's drill down and look at their bank balance. 
+
+```{r}
+grouped <- data %>% 
+  filter(year==2022)%>%
+  group_by(day, month) %>% 
+  dplyr::summarise(avg = mean(availableBalance)) %>%
+  ungroup() %>%
+  na.omit()
+  
+ggplot(grouped, 
+       aes(month, 
+           day, 
+           fill = avg)) + 
+geom_tile(color = "white", 
+          size = 0.1) + 
+theme_tufte(base_family = "Helvetica") + 
+coord_equal() +
+scale_fill_gradient(name = "Amount",
+                    low = "sky blue", 
+                    high = "dark blue") +
+labs(x = NULL,
+     y = NULL, 
+     title = "Bank balance - 2022 ") +
+theme(axis.ticks = element_blank(),
+      plot.title = element_text(hjust = 0.5),
+      legend.title = element_text(size = 8),
+      legend.text = element_text(size = 6) )
+```
+
+### Insights
+
++ This heatmap shows that irrespective of days, Bank Balance gets increased as the months progress
+
++ Participants have least amount in March and maximum in Dec of 2022.
+
+
+### Travel Pattern Analysis
+
+Now that we have explored the budget, balance and cost part of the participants, let's analyse the travel pattern of both the participants and where they travel on a daily basis.
+
+
+```{r}
+logs_selected <- read_rds("data/logs_selected.rds")
+buildings <- read_sf("data/Buildings.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+```
+```{r,echo=FALSE, fig.show='hide'}
+hex <- st_make_grid(buildings, 
+                    cellsize=100, 
+                    square=FALSE) %>%
+  st_sf() %>%
+  rowid_to_column('hex_id')
+points_in_hex <- st_join(logs_selected, 
+                         hex, 
+                         join=st_within)
+
+points_in_hex <- st_join(logs_selected, 
+                        hex, 
+                        join=st_within) %>%
+  st_set_geometry(NULL) %>%
+  dplyr::count(name='pointCount', hex_id)
+
+hex_combined <- hex %>%
+  left_join(points_in_hex, 
+            by = 'hex_id') %>%
+  replace(is.na(.), 0)
+tm_shape(hex_combined %>%
+           filter(pointCount > 0))+
+  tm_fill("pointCount",
+          n = 8,
+          style = "quantile") +
+  tm_borders(alpha = 0.1)
+
+```
+
+### Travel Pattern of Participant 10
+
+The Code chunk below joins the event points into movement paths by using the participants' IDs as unique identifiers.
+
+```{r}
+logs_path <- logs_selected %>%
+  group_by(participantId, day) %>%
+  dplyr::summarize(m = mean(Timestamp), 
+            do_union=FALSE) %>%
+  st_cast("LINESTRING")
+```
+
+Let's plot the movement path of Participant 10.
+
+```{r}
+
+logs_path_selected<-logs_path %>% filter(participantId==10)
+
+tmap_mode("plot")
+tm_shape(buildings)+
+tm_polygons(col = "grey60",
+size = 1,
+border.col = "black",
+border.lwd = 1) +
+tm_shape(logs_path_selected) +
+tm_lines(col = "blue")
+tmap_mode("plot")
+  
+```
+
+Let's plot the movement path of Participant 25.
+
+```{r}
+
+logs_path_selected<-logs_path%>%filter(participantId==25)
+
+
+
+tmap_mode("plot")
+tm_shape(buildings)+
+tm_polygons(col = "grey60",
+size = 1,
+border.col = "black",
+border.lwd = 1) +
+tm_shape(logs_path_selected) +
+tm_lines(col = "blue")
+tmap_mode("plot")
+  
+```
+
+### Insights
+
++ Both the participants travel almost in the same route except that Participant Id 25 travels south west part of the city regularly than Participant Id 10.
+
++ Also, Participant Id 10 travels much part of North east than Participant with Id 25.
+
+## 4. Learning Points
+
+Working on this Take home exercise helped me to understand how Visualising and Analysing Time-oriented Data can be performed in R. Also, besides larger timeline, it also helped to drill down and understand behavioral observation over time on the daily basis.

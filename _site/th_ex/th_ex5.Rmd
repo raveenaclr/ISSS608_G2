@@ -1,0 +1,290 @@
+---
+title: "Take-home Exercise 5"
+description: |
+ Visualising and Analysing Geographic and Movement Data
+author:
+  - name: Raveena Chakrapani
+    url: https://www.linkedin.com/in/raveena-chakrapani-444a60174/
+    affiliation: School Of Computing and Information Systems, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/master-it-business
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message=FALSE, warning = FALSE,
+                      fig.retina = 3)
+```
+
+# Overview
+
+The task of this Take-home exercise is to reveal the following by appropriate visualization techniques
+
++ Social areas of the city of Engagement, Ohio USA.
+
++ Visualising and analysing locations with traffic bottleneck of the city of Engagement, Ohio USA.
+
+# Getting Started
+
+### Installing and loading the required libraries
+Before we get started, it is important for us to ensure that the required R packages have been installed. If yes, we will load the R pacakges. If they have yet to be installed, we will install the R packages and load them onto R environment.
+
+The code chunk below is used to install and load the required packages onto RStudio.
+
+
+```{r}
+packages = c('tidyverse','sf','tmap','data.table','knitr','sp')
+for(p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+}
+
+```
+
+
+### Importing data
+The code chunk below imports all the required files  from the data folder into R by using [`read_csv()`](https://readr.tidyverse.org/reference/read_delim.html) of [<span style="color:blue">**readr**</span>](https://readr.tidyverse.org/index.html) and save it as an tibble data frame called *data*
+
+
+```{r}
+# read csv file
+travel <- read_csv("data/TravelJournal.csv")
+schools <- read_sf("data/wkt//Schools.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+apartments <- read_sf("data/wkt/Apartments.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+buildings <- read_sf("data/wkt/Buildings.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+pubs <- read_sf("data/wkt/Pubs.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+restaurants <- read_sf("data/wkt/Restaurants.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+employers <- read_sf("data/wkt/Employers.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+```
+```{r}
+apartments <- apartments %>% 
+  mutate(across(rentalCost, as.integer),
+  across(maxOccupancy, as.integer),
+  across(numberOfRooms, as.integer)) 
+  
+  apartments$rentalCost <- cut(apartments$rentalCost , breaks = c(347,531,713,876,1040,1250,1601),labels = c('348-531','532-713','714-876','877-1040','1041-1250','1251-1601'),include.lowest=TRUE)
+```
+
+Let's visualise the restaurants and pubs with different no. of occupancies
+
+```{r}
+buildings <- buildings %>% 
+  mutate(across(maxOccupancy, as.integer)) 
+
+  buildings$maxOccupancy <- cut(buildings$maxOccupancy , breaks = c(1,25,50,75,100,420),labels = c('2-25','26-50','51-75','76-100','101-420'),include.lowest=TRUE)
+  
+restaurants <- restaurants %>% 
+  mutate(across(maxOccupancy, as.integer)) 
+pubs <- pubs %>% 
+  mutate(across(maxOccupancy, as.integer)) 
+```
+```{r}
+
+tmap_mode("view")
+tm_shape(buildings)+
+tm_polygons(col = "maxOccupancy",
+           size = 1,
+           border.col = "black",
+           border.lwd = 1,
+           legend.show = FALSE)+
+
+tm_shape(pubs)+
+tm_markers(col = "yellow",
+           shape= marker_icon(),
+           size = "maxOccupancy",
+           border.col = "black",
+           border.lwd = 1)+
+  
+tm_shape(restaurants)+
+tm_bubbles(col = "blue",
+           shape= marker_icon(),
+           size = "maxOccupancy",
+           border.col = "black",
+           border.lwd = 2) 
+```
+### Insights
+
+When we zoom the graph, It shows that restaurants 447,898, 896 have most no. of occupancy and pubs 892, 444, 893 have higher occupancy compared to others.
+
+Let us look at the apartments in the city with respect to no. of rooms
+
+```{r}
+
+apartments$numberOfRooms <- as.numeric(apartments$numberOfRooms)
+tm_shape(apartments)+
+tm_bubbles(col = "yellow",
+           size = "numberOfRooms",
+           border.lwd = 0.5) +
+  tm_facets(by= "numberOfRooms",
+            sync = TRUE)
+```
+### Insights
+
+The above graph shows that the apartments in the city with different no. of rooms are almos the same.
+
+Now, let's see what is the duration which the participant spends in each pub or restaurant of the city.
+
+```{r, eval =FALSE}
+travel_tidy <- travel %>%
+  mutate(travel_duration = difftime(travelEndTime,travelStartTime, units="mins"),
+  time_spent = difftime(checkOutTime, checkInTime,units = "mins"),
+  amount_spent = startingBalance - endingBalance ) %>%
+  dplyr::select(participantId,travelStartLocationId,travelEndLocationId,travel_duration,time_spent,amount_spent,purpose)
+kable(head(travel_tidy))
+
+```
+```{r, eval=FALSE}
+restaurant_filt <- travel_tidy %>% 
+  filter(purpose== "Coming Back From Restaurant")
+restaurant_merge <- merge(restaurant_filt, restaurants, by.x="travelStartLocationId",
+      by.y="restaurantId",
+      all.x=TRUE) 
+rest_grp <- restaurant_merge %>% 
+  group_by(travelStartLocationId) %>%
+  dplyr::summarise(tot_time = sum(time_spent)) 
+
+rest_grp_merge <- merge(rest_grp,restaurants,by.x="travelStartLocationId",
+      by.y="restaurantId",
+      all.x=TRUE)
+# rest_grp_merge
+# fwrite(rest_grp_merge,
+#      file= "data/rest_grp_merge.csv",
+#       sep = ",")
+```
+
+```{r, eval=FALSE}
+pubs_filt <- travel_tidy %>% 
+  filter(purpose== "Recreation (Social Gathering)")
+pub_merge <- merge(pubs_filt, pubs, by.x="travelEndLocationId",
+      by.y="pubId",
+      all.x=TRUE) 
+pub_grp <- pub_merge %>% 
+  group_by(travelEndLocationId) %>%
+  dplyr::summarise(tot_time = sum(time_spent))
+pub_grp_merge <- merge(pub_grp,pubs,by.x="travelEndLocationId",
+      by.y="pubId",
+      all.x=TRUE)
+#pub_grp_merge
+# fwrite(pub_grp_merge,
+#      file= "data/pub_grp_merge.csv",
+#       sep = ",")
+```
+
+```{r}
+rest_data <- read_csv("data/rest_grp_merge.csv")
+rest_data_sf <- st_as_sf(
+  rest_data, 
+  coords = c("XCOORD",
+             "YCOORD"),
+             crs= 7285)
+
+pub_data <- read_csv("data/pub_grp_merge.csv")
+pub_data_sf <- st_as_sf(
+  pub_data, 
+  coords = c("XCOORD",
+             "YCOORD"),
+             crs= 7285)
+```
+```{r}
+tmap_mode("view")
+tm_shape(rest_data_sf)+
+tm_markers(shape=marker_icon(),
+           col = "blue",
+           size = "tot_time",
+           border.col = "black",
+           border.lwd = 0.5)+
+tm_shape(pub_data_sf)+
+tm_markers(shape=marker_icon(),
+           col = "yellow",
+           size = "tot_time",
+           border.col = "black",
+           border.lwd = 1)
+```
+### Insights
+
+It is observed from the graph that participants spend more amount of time in these pubs  (1342, 1799) and in these restaurants  (896, 445)
+
+### Movement Analysis
+
+Let's look at the movement pattern of the participants in the city.
+
+```{r}
+logs_selected <- read_rds("data/logs_selected.rds")
+buildings <- read_sf("data/wkt/Buildings.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+```
+```{r}
+write.csv(logs_selected, "logs_selected.csv", row.names=FALSE)
+
+```
+
+```{r,echo=FALSE, fig.show='hide'}
+
+hex <- st_make_grid(buildings, 
+                    cellsize=100, 
+                    square=FALSE) %>%
+  st_sf() %>%
+  rowid_to_column('hex_id')
+points_in_hex <- st_join(logs_selected, 
+                         hex, 
+                         join=st_within)
+
+points_in_hex <- st_join(logs_selected, 
+                        hex, 
+                        join=st_within) %>%
+  st_set_geometry(NULL) %>%
+  dplyr::count(name='pointCount', hex_id)
+
+hex_combined <- hex %>%
+  left_join(points_in_hex, 
+            by = 'hex_id') %>%
+  replace(is.na(.), 0)
+
+p <- tm_shape(hex_combined %>%
+           filter(pointCount > 0))+
+  tm_fill("pointCount",
+          n = 8,
+          style = "quantile") +
+  tm_borders(alpha = 0.1)
+
+logs_path <- logs_selected %>%
+  group_by(participantId, day) %>%
+  dplyr::summarize(m = mean(Timestamp), 
+            do_union=FALSE) %>%
+  st_cast("LINESTRING")
+
+```
+Lets filter out the peak hours and try to visualize what are the areas where traffic is more
+
+```{r}
+logs_path_peak <-logs_path %>%
+  mutate(time=format(m,"%H:%M:%S")) %>%
+  filter(time >= "18:00:00" & time <= "23:30:00") %>%
+  filter(participantId >= 0 & participantId <= 50 )
+```
+
+```{r}
+tmap_mode("plot")
+tm_shape(buildings)+
+tm_polygons(col = "grey60",
+size = 1,
+border.col = "black",
+border.lwd = 1) +
+tm_shape(logs_path_peak) +
+tm_lines(col = "participantId") +
+tm_layout(main.title = "Traffic in peak hours",
+            main.title.position = "center",
+            main.title.size = 1,
+            legend.show = FALSE)
+
+```
+### Insights
+  
++ The above graph shows that the center part of the city is highly congested during evening peak hours as the density of line is thick.
