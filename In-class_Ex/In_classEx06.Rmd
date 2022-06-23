@@ -1,0 +1,164 @@
+---
+title: "In Class Exercise 6"
+description: |
+ Putting Visual Analytics into Practical Use
+author:
+  - name: Raveena Chakrapani
+    url: https://www.linkedin.com/in/raveena-chakrapani-444a60174/
+    affiliation: School Of Computing and Information Systems, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/master-it-business
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Install and load packages
+
+```{r}
+
+packages = c( 'sf', 'tmap','tidyverse','lubridate','sftime','rmarkdown','clock')
+for (p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p,character.only = T)
+}
+```
+
+
+```{r, echo=FALSE}
+schools <- read_sf("data/wkt/Schools.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+apartments <- read_sf("data/wkt/Apartments.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+buildings <- read_sf("data/wkt/Buildings.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+pubs <- read_sf("data/wkt/Pubs.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+restaurants <- read_sf("data/wkt/Restaurants.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+employers <- read_sf("data/wkt/Employers.csv", 
+                   options = "GEOM_POSSIBLE_NAMES=location")
+```
+
+
+```{r, echo=FALSE,eval=FALSE}
+tmap_mode("view")
+tm_shape(buildings)+
+tm_polygons(col = "grey60",
+           size = 1,
+           border.col = "black",
+           border.lwd = 1)
+tmap_mode("plot")
+```
+
+
+
+```{r, echo=FALSE,eval=FALSE}
+logs <- read_sf("data/wkt/ParticipantStatusLogs1.csv", 
+                options = "GEOM_POSSIBLE_NAMES=currentLocation")
+```
+```{r, eval=FALSE}
+glimpse(logs)
+```
+
+```{r, echo=FALSE, eval=FALSE}
+logs_selected <- logs %>%
+  mutate(Timestamp = date_time_parse(timestamp,
+                                     zone="",
+                                     format="%Y-%m-%dT%H:%M:%S")) %>%
+  mutate(day=get_day(Timestamp)) %>%
+  filter(currentMode == "Transport")
+```
+```{r, echo=FALSE, eval=FALSE}
+write_rds(logs_selected, "data/rds/logs_selected.rds")
+```
+
+### Import data
+
+```{r}
+logs_selected <- read_rds("data/rds/logs_selected.rds")
+```
+
+### Computing the hexagons
+```{r}
+hex <- st_make_grid(buildings, 
+                    cellsize=100, 
+                    square=FALSE) %>%
+  st_sf() %>%
+  rowid_to_column('hex_id')
+plot(hex)
+```
+
+### Performing point in ploygon overlay
+
+```{r}
+points_in_hex <- st_join(logs_selected, 
+                         hex, 
+                         join=st_within)
+#plot(points_in_hex, pch='.')
+```
+### Performing point in polygon count
+```{r}
+points_in_hex <- st_join(logs_selected, 
+                        hex, 
+                        join=st_within) %>%
+  st_set_geometry(NULL) %>%
+  count(name='pointCount', hex_id)
+head(points_in_hex)
+```
+
+### Relational join
+
+```{r}
+hex_combined <- hex %>%
+  left_join(points_in_hex, 
+            by = 'hex_id') %>%
+  replace(is.na(.), 0)
+```
+
+### plotting hexagon binning map
+
+```{r}
+tm_shape(hex_combined %>%
+           filter(pointCount > 0))+
+  tm_fill("pointCount",
+          n = 8,
+          style = "quantile") +
+  tm_borders(alpha = 0.1)
+```
+
+### Creating movement path from event points
+
+```{r}
+logs_path <- logs_selected %>%
+  group_by(participantId, day) %>%
+  dplyr::summarize(m = mean(Timestamp), 
+            do_union=FALSE) %>%
+  st_cast("LINESTRING")
+
+print(logs_path)
+```
+### filtering for participant ID 0
+
+```{r}
+
+logs_path_selected<-logs_path%>%filter(participantId==0)
+
+
+
+tmap_mode("plot")
+tm_shape(buildings)+
+tm_polygons(col = "grey60",
+size = 1,
+border.col = "black",
+border.lwd = 1) +
+tm_shape(logs_path_selected) +
+tm_lines(col = "blue")
+tmap_mode("plot")
+  
+```
+

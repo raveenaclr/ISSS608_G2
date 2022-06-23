@@ -1,0 +1,361 @@
+---
+title: "Take-home Exercise 6"
+description: |
+ Visualising and Analysing Community Network
+author:
+  - name: Raveena Chakrapani
+    url: https://www.linkedin.com/in/raveena-chakrapani-444a60174/
+    affiliation: School Of Computing and Information Systems, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/master-it-business
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message=FALSE, warning = FALSE,
+                      fig.retina = 3)
+```
+
+# 1. Overview
+
+In this Take-home Exercise 6, I have explored the patterns of community interactions of the [<span style="color:blue">**city of Engagement, Ohio USA**</span>](https://vast-challenge.github.io/2022/) residents by using social network analysis approach.
+
+
+# 2. Task
+
++ Considering the social activities in the community, What patterns do you see in the social networks in the town? 
+
+# 3.Getting Started
+
+### 3.1 Installing and loading the required libraries
+In this exercise, four network data modelling and visualisation packages will be installed and launched. They are [<span style="color:blue">**igraph**</span>](https://github.com/igraph/rigraph) , [<span style="color:blue">**tidygraph**</span>](https://www.r-bloggers.com/2017/07/introducing-tidygraph/), [<span style="color:blue">**ggraph**</span>](https://www.data-imaginist.com/2017/ggraph-introduction-layouts/) and [<span style="color:blue">**visNetwork**</span>](https://datastorm-open.github.io/visNetwork/). Beside these four packages, tidyverse and lubridate, an R package specially designed to handle and wrangling time data will be installed and launched too.
+
+The code chunk below is used to install and load the required packages onto RStudio.
+
+
+```{r}
+packages = c('igraph', 'tidygraph', 
+             'ggraph', 'visNetwork', 
+             'lubridate', 'clock',
+             'tidyverse', 'graphlayouts',
+             'patchwork','DT','knitr',
+             'zoo','ggdist')
+for(p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+}
+
+```
+
+### Importing data
+
+As Social network data file is huge in size, it is processed and saved as rds file. Let's read the rds file. There are two data sets. One contains the nodes data and the other contains the edges (also know as link) data. The edges data consists of social interactions between the participants and the nodes data consists of other details of participants. Let's import *tidy_social_data.rds* and *GAStech_email_edges.csv* into RStudio environment by using `readRDS()` and `read_csv()` of readr package.
+
+```{r, eval=FALSE}
+data <- read_csv("data/SocialNetwork.csv")
+data <- data %>%
+  mutate(Date = as_date(timestamp)) %>%
+  mutate(Weekday=weekdays(Date),Month=zoo::as.yearmon(Date,"%Y %m"))
+```
+
+### Which month had more and less interactions ?
+
+```{r, eval= FALSE}
+count_interactions <- data %>%
+  group_by(Month)%>%
+  tally()
+count_interactions[order(-count_interactions$n),][1:2,])
+count_interactions[order(count_interactions$n),][1:2,])
+
+```
+### Revealing patterns of the most interactive month
+
+It is understood that **July** month had a lot of interactions and **March** month had less no. of interactions. Let's zoom in and view the attributes.The edges data contains individual interactions records which is not useful for analysis or visualisation. So, let us aggregate the individuals by date, senders, receivers, month and day of the week. Four functions from dplyr package are used. They are `filter()`, `group()`, `summarise()`, and `ungroup()`.A new field called Weight has been added in data_edges_aggregated and saved it in a rds file. 
+
+
+```{r, eval=FALSE}
+data_edges_aggregated <- data %>%
+  filter(timestamp >= "2022-07-01" & timestamp <= "2022-07-31") %>%
+  group_by(participantIdFrom , participantIdTo, Weekday) %>%
+    dplyr::summarise(Weight = n()) %>%
+  filter(participantIdFrom!=participantIdTo) %>%
+  filter(Weight > 1) %>%
+  ungroup()
+saveRDS(data_edges_aggregated,'data/july2022_social_data.rds')
+```
+```{r}
+data_edges <- readRDS("data/july2022_social_data.rds")
+data_nodes <- read_csv("data/participants.csv")
+data_nodes$ageGroup <- cut(data_nodes$age, breaks = c(17,35,60),labels = c('Young Adults','Old Adults'),include.lowest=TRUE)
+```
+
+### Analytics
+
+Before proceeding with the network analysis, first let us examine the data. Here the weights calculated are single numbers. A point estimate is a single number, such as a mean. Uncertainty is expressed as standard error, confidence interval, or credible interval.
+
+```{r}
+data_edges$Weekday <- factor(data_edges$Weekday, level = c('Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'))
+my_sum <-  data_edges %>%
+  group_by(Weekday) %>%
+  dplyr::summarise(
+    n=n(),
+    mean=mean(Weight),
+    sd=sd(Weight)
+    ) %>%
+  mutate(se=sd/sqrt(n-1))
+
+knitr::kable(head(my_sum), format = 'html')
+```
+The code chunk below is used to reveal the standard error of mean weights score by weekdays
+
+```{r}
+ggplot(my_sum) +
+  geom_errorbar(
+    aes(x=Weekday, 
+        ymin=mean-se, 
+        ymax=mean+se,
+        y=mean), 
+    width=0.2, 
+    colour="black", 
+    alpha=0.9, 
+    size=0.5) +
+  geom_point(aes
+           (x=Weekday, 
+            y=mean), 
+           stat="identity", 
+           color="red",
+           size = 1.5,
+           alpha=1) +
+  xlab('Weekday')+
+  ylab('Mean')+
+  labs(title="Standard error of Mean weight by Weekdays")+
+  theme(panel.background = element_rect(fill = "#BFD5E3", colour = "#6D9EC1",
+                                size = 2, linetype = "solid"),
+  panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                colour = "white"), 
+  panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+                                colour = "white"),
+  axis.line = element_line(size = 1.5, colour = "black"),
+  axis.ticks = element_line(colour = "black", size = rel(2)),
+  plot.title = element_text(size=15, hjust = 0.5),
+  axis.title.y.left = element_text(vjust = 0.5),
+  axis.title.y=element_text(angle=0))
+
+```
+### Observation
+
+It is seen that standard error of mean weight is low on Wednesday and Thursday.It is comparatively high on other weekdays.
+
+In the code chunk below, stat_gradientinterval() of ggdist is used to build a visual for displaying distribution of weights by weekdays.
+
+
+```{r}
+data_edges %>%
+  ggplot(aes(x=Weekday, 
+             y = Weight)) +
+  stat_gradientinterval(
+    fill = "skyblue",
+    show.legend = TRUE
+  ) +
+  labs(
+    title = "Confidence intervals of mean Weight",
+    subtitle = "Gradient + interval plot")+
+  theme(plot.title = element_text(size=15, hjust = 0.5),
+        plot.subtitle = element_text(size=15, hjust = 0.5),
+        axis.title.y.left = element_text(vjust = 0.5),
+        axis.title.y=element_text(angle=0))
+```
+### Observation
+
+The above graph shows various confidence levels from 70 - 90 with varying colour intensity.
+
+
+
+### Reviewing the data
+
+```{r}
+glimpse(data_edges)
+```
+Firstly, let's visualise the social interactions of participants who has joviality index more than 0.9. Then, lets create an edge file with only those participants.
+
+```{r}
+
+jov0.9 <- data_nodes %>%
+  filter(joviality > 0.95)
+
+jovEdge <- data_edges %>%
+  filter(participantIdFrom %in% jov0.9$participantId & participantIdTo %in% jov0.9$participantId)
+
+jovNode <-jov0.9 %>%
+  filter(participantId %in% jovEdge$participantIdFrom & participantId %in% jovEdge$participantIdTo)
+```
+
+### Building data model
+
+The below code chunk is to build an tidygraph's network graph data.frame using `tbl_graph()` of tinygraph package.
+
+```{r}
+
+social_graph <- graph_from_data_frame(jovEdge, vertices = jovNode) %>%
+  as_tbl_graph() %>%
+  activate(edges) %>%
+  arrange(desc(Weight))
+social_graph
+
+```
+
+
+```{r, fig.width= 10, fig.height= 9}
+
+g <- ggraph(social_graph, 
+            layout = "nicely") + 
+  geom_edge_link(aes(width=Weight), 
+                 alpha=0.2) +
+  scale_edge_width(range = c(0.1, 3)) +
+  geom_node_point(aes(colour = educationLevel, 
+                      size = ageGroup))
+ g + theme_graph() +
+  labs(fill = "Education Level",title="Do birds of same feather flock together ?",
+       subtitle = "During July 2022 (Most interactive season)") +
+  theme(plot.title = element_text(size=15, hjust = 0.5),
+        plot.subtitle  = element_text(size = 10, hjust = 0.5),
+        text = element_text(size=12,face="bold"))
+```
+### Observations:
+
++ It is observed that participants of High School or College interacts among them than with others. They form a cluster.
+
++ Also, Graduate students are those who interact with everyone irrespective of educational qualification or age group.
+
++ Though participants of Bachelors interact with other participants, their intensity is too low. They don't form a strong bonding with anyone.
+
+```{r, fig.width= 10, fig.height= 9}
+set_graph_style()
+g <- ggraph(social_graph, 
+            layout = "nicely") + 
+  geom_edge_link(aes(width=Weight), 
+                 alpha=0.2) +
+  scale_edge_width(range = c(0.1, 5)) +
+  geom_node_point(aes(colour = educationLevel), 
+                  size = 2)
+g + facet_nodes(~interestGroup)+
+  th_foreground(foreground = "grey80",  
+                border = TRUE) +
+  labs(title="Why people of same interest groups (B,C,D) don't interact with each other?") +
+  theme(plot.title = element_text(size=15, hjust = 0.5),
+  legend.position = 'bottom',
+  text = element_text(size=12,face="bold"))
+```
+### Observation
+
++ It is observed that participants of interest groups B, C and D don't interact much may be in this timeline despite July 2022 having maximum interactions overall.
+
++ There may be a chance of happening any events in this month for the interest groups A,F,G & I and hence people of those interest groups are highly active.
+
++ It is also observed that Interest Group I comprises of participants of different educational background.
+
+
+### Revealing patterns of the least interactive month
+
+  It is understood that July month had a lot of interactions. Let's zoom in and view the attributes.The edges data contains individual interactions records which is not useful for analysis or visualisation. So, let us aggregate the individuals by date, senders, receivers, month and day of the week. Four functions from dplyr package are used. They are `filter()`, `group()`, `summarise()`, and `ungroup()`.A new field called Weight has been added in data_edges_aggregated and saved it in a rds file. 
+
+
+```{r, eval=FALSE}
+data_edges_aggregated <- data %>%
+  filter(timestamp >= "2022-03-01" & timestamp <= "2022-03-31") %>%
+  group_by(participantIdFrom , participantIdTo, Weekday) %>%
+    dplyr::summarise(Weight = n()) %>%
+  filter(participantIdFrom!=participantIdTo) %>%
+  filter(Weight > 1) %>%
+  ungroup()
+saveRDS(data_edges_aggregated,'data/march2022_social_data.rds')
+```
+```{r}
+data_edges <- readRDS("data/march2022_social_data.rds")
+data_nodes <- read_csv("data/participants.csv")
+data_nodes$ageGroup <- cut(data_nodes$age, breaks = c(17,35,60),labels = c('Young Adults','Old Adults'),include.lowest=TRUE)
+```
+
+### Reviewing the data
+
+```{r}
+glimpse(data_edges)
+```
+Firstly, let's visualise the social interactions of participants who has joviality index more than 0.9. Then, lets create an edge file with only those participants.
+
+```{r}
+
+jov0.9 <- data_nodes %>%
+  filter(joviality > 0.95)
+
+jovEdge <- data_edges %>%
+  filter(participantIdFrom %in% jov0.9$participantId & participantIdTo %in% jov0.9$participantId)
+
+jovNode <-jov0.9 %>%
+  filter(participantId %in% jovEdge$participantIdFrom & participantId %in% jovEdge$participantIdTo)
+```
+
+### Building data model
+
+The below code chunk is to build an tidygraph's network graph data.frame using `*tbl_graph()*` of tinygraph package.
+
+```{r}
+
+social_graph <- graph_from_data_frame(jovEdge, vertices = jovNode) %>%
+  as_tbl_graph() %>%
+  activate(edges) %>%
+  arrange(desc(Weight))
+social_graph
+
+```
+
+
+```{r, fig.width= 10, fig.height= 9}
+
+g <- ggraph(social_graph, 
+            layout = "nicely") + 
+  geom_edge_link(aes(width=Weight), 
+                 alpha=0.2) +
+  scale_edge_width(range = c(0.1, 3)) +
+  geom_node_point(aes(colour = educationLevel, 
+                      size = ageGroup))
+ g + theme_graph() +
+  labs(fill = "Education Level",title="Do birds of same feather flock together ?",
+       subtitle = "During March 2022 (Least interactive season)") +
+  theme(plot.title = element_text(size=15, hjust = 0.5),
+        plot.subtitle  = element_text(size = 10, hjust = 0.5),
+        text = element_text(size=12,face="bold"))
+```
+### Observations:
+
++ It can be seen that people are highly detatched among themselves and the intensity of interaction is also too low at most cases.
+
++ Participants of High School or College doesn't interact with others and they form their own group.
+
+```{r, fig.width= 10, fig.height= 9}
+
+set_graph_style()
+g <- ggraph(social_graph, 
+            layout = "nicely") + 
+  geom_edge_link(aes(width=Weight), 
+                 alpha=0.2) +
+  scale_edge_width(range = c(0.1, 5)) +
+  geom_node_point(aes(colour = educationLevel), 
+                  size = 2)
+g + facet_nodes(~interestGroup)+
+  th_foreground(foreground = "grey80",  
+                border = TRUE) +
+  labs(title="Why people of same interest groups don't interact with each other?") +
+  theme(plot.title = element_text(size=15, hjust = 0.5), 
+  legend.position = 'bottom',
+  text = element_text(size=12,face="bold"))
+```
+### Observation
+
++ It is observed that though participants from same interest group doesn't interact with each other.
+
++ It can be due to absence of any events happening in the city that makes the people to spend time all alone without much interactions with others.
+
+

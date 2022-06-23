@@ -1,7 +1,7 @@
-name: "ISSS608_G2"
-title: "My Website"
+name: "ISSS608_G1"
+title: "Visual Analytics "
 description: |
-  My Website
+  Visual Analytics
 output_dir: "_site"
 navbar:
   right:
@@ -9,4 +9,34 @@ navbar:
       href: index.html
     - text: "About"
       href: about.html
+  left:
+    - text: "DataViz Makeover"
+      menu:
+      - text: "DataViz Makeover 1"
+        href: "DataViz1"
+      - text: "DataViz MakeOver 2"
+        href: "DataViz2"
+    - text: "Take-home Exercise"
+      menu:
+      - text: "Take-home Exercise 1"
+        href: th_ex/th_ex1.html
+      - text: "Take-home Exercise 2"
+        href: th_ex/th_ex2.html
+      - text: "Take-home Exercise 3"
+        href: th_ex/th_ex3.html
+      - text: "Take-home Exercise 4"
+        href: th_ex/th_ex4.html
+      - text: "Take-home Exercise 5"
+        href: th_ex/th_ex5.html
+      - text: "Take-home Exercise 6"
+        href: th_ex/th_ex6.html
+    - text: "In-Class Exercise"
+      menu:
+      - text: "In-class Exercise 4"
+        href: In-class_Ex/in_class_Ex04.html
+      - text: "In-class Exercise 6"
+        href: In-class_Ex/In_classEx06.html
+      - text: "In-class Exercise 7"
+        href: In-class_Ex/In_class_Ex07.html
+  
 output: distill::distill_article
