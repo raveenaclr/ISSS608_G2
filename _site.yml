@@ -40,5 +40,13 @@ navbar:
         href: In-class_Ex/In_class_Ex07.html
       - text: "In-Class Exercise 10"
         href: In-class_Ex/In_class_Ex10.html
+    - text: "Time Series Models"
+      menu:
+      - text: "Using ggplot, timetk"
+        href: R4DSA/time_series.html
+      - text: "ETS and ARIMA"
+        href: R4DSA/ets_arima.html
+      - text: "Modeltime Methods"
+        href: R4DSA/model_time.html
   
 output: distill::distill_article

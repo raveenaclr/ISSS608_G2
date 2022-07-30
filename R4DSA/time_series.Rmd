@@ -1,0 +1,196 @@
+---
+title: "Time Series Data Analysis"
+description: |
+       Calibrate time-series forecasting models by using exponential smoothing and ARIMA techniques
+  
+author:
+  - name: Raveena Chakrapani
+    url: https://www.linkedin.com/in/raveena-chakrapani-444a60174/
+    affiliation: School Of Computing and Information Systems, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/master-it-business
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Objective
+
++ Import and wrangling time-series data by using appropriate tidyverse methods.
+
++ Visualise and analyse time-series data,calibrate time-series forecasting models by using exponential smoothing and ARIMAtechniques.
+
++ compare and evaluate the performance of forecasting models.
+
+### Loading Packages
+
+```{r, message=FALSE}
+
+packages = c('tidyverse', 'lubridate', 'zoo', 'timetk', 
+               'modeltime','trelliscopejs', 'seasonal',
+               'tsibble', 'feasts', 'fable')
+for(p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+}
+
+```
+
+### Importing Data
+
+```{r}
+ts_data <- read_csv("data/visitor_arrivals_by_air.csv")
+```
+
+### Data Wrangling
+
++ Converting `tibble` object to `tsibble` object
+
+```{r}
+ts_data$`Month-Year` <- dmy(ts_data$`Month-Year`)
+ts_tsibble <- ts_data %>% 
+  mutate(Month = yearmonth(`Month-Year`)) %>% 
+  as_tsibble(index = `Month`)
+```
+
++  Converting the data frame from wide to **longformat** by using `pivot_longer()` of [**tidyr**](https://tidyr.tidyverse.org/) package
+
+```{r}
+ts_longer <- ts_data %>%  pivot_longer(cols = c(2:34),
+                                       names_to = "Country",
+                                       values_to = "Arrivals")
+```
+
+### Visualising single time-series: ggplot2 methods
+
+```{r}
+ts_longer %>%  
+  filter(Country == "Vietnam") %>%
+  ggplot(aes(x = `Month-Year`,y = Arrivals))+  
+  geom_line(size = 1)
+```
+
+### Visualising single time-series: timetk methods
+
+In the code chunk below, `plot_time_series()` oftimetk package is used to plot the time series linegraph.
+
+```{r}
+ts_longer %>% 
+  filter(Country == "Vietnam") %>%  
+  plot_time_series(`Month-Year`, Arrivals,
+                   .line_size = 0.4,
+                   .smooth_size = 0.4,
+                   .interactive = TRUE,
+                   .plotly_slider = TRUE)
+```
+
+### Plotting time-series data: ggplot2 methods
+
+```{r}
+ggplot(data = ts_longer,aes(x = `Month-Year`,
+                            y = Arrivals,
+                            color = Country)) +
+  geom_line(size = 0.5)
+```
+
+### Visualising multiple time-series with trellis plot: ggplot2 methods
+
+In order to provide eective comparison, `facet_wrap()` of ggplot2 package is used to createsmall multiple line graph also known as trellis plot.
+
+```{r}
+ggplot(data = ts_longer,
+       aes(x = `Month-Year`,
+           y = Arrivals))+  
+  geom_line(size = 0.5) +  
+  facet_wrap(~ Country,             
+             scales = "free_y") +
+  theme_bw()
+```
+
+### Visualising multiple time-series with interactive trellis plot: timetkmethods
+
+```{r}
+ts_longer %>%  
+  group_by(Country) %>%  
+  plot_time_series(`Month-Year`, 
+                   Arrivals,    
+                   .line_size = 0.4,    
+                   .facet_ncol = 5,     
+                   .facet_scales = "free_y",    
+                   .interactive = TRUE,    
+                   .smooth_size = 0.4)
+```
+
+### Visualising multiple time-series with interactive trellis plot: timetkmethods
+
+```{r}
+ts_longer %>%  
+  group_by(Country) %>%  
+  plot_time_series(`Month-Year`,
+                   Arrivals,    
+                   .line_size = 0.4,    
+                   .facet_ncol = 5,    
+                   .facet_nrow = 2,    
+                   .facet_scales = "free_y",   
+                   .interactive = TRUE,    
+                   .smooth_size = 0.4,    
+                   .trelliscope = TRUE,    
+                   .trelliscope_params = list(width = 600,      
+                                              height = 700,     
+                                              path= "trellis/"))
+```
+
+### Visual Analysis of Seasonality
+
+Time series datasets can contain a seasonal component.This is a cycle that repeats over time, such as monthly or yearly. This repeating cycle may obscure the signal that we wish to model when forecasting, and in turn may provide a strong signal to our predictive models.
+
+In the code chunk below,plot_seasonal_diagnostics() of *timetk* package is used to detect seasonal patterns visually.
+
+```{r}
+ts_longer %>%  
+  filter(Country == "Vietnam") %>%  
+  plot_seasonal_diagnostics(`Month-Year`, 
+                            Arrivals,
+                            .interactive = TRUE)
+```
+
+`plot_seasonal_diagnostics()` of timetk package can also be used to detect seasonal patterns of multiple timeseries visually.
+
+```{r}
+ts_longer %>%  
+  filter(Country == "Italy" |
+         Country == "Germany" |
+         Country == "United Kingdom" |
+         Country == "New Zealand") %>%  
+  group_by(Country) %>%
+  plot_seasonal_diagnostics(`Month-Year`, 
+                            Arrivals,
+                            .feature_set ="month.lbl",
+                            .interactive = FALSE)
+
+```
+
+### Visual Analysis of Seasonality: feasts methods
+
+A season plot is created by using `gg_season()` offeasts package.
+
+```{r}
+tsibble_longer <- ts_tsibble %>%
+  pivot_longer(cols = c(2:34),
+               names_to = "Country",
+               values_to = "Arrivals")
+```
+
+```{r}
+tsibble_longer %>%  
+  filter(Country == "Italy" |        
+           Country == "Vietnam" |         
+           Country == "United Kingdom" |         
+           Country == "Germany") %>%   
+  gg_season(Arrivals)
+```
+
