@@ -40,6 +40,7 @@ navbar:
         href: In-class_Ex/In_class_Ex07.html
       - text: "In-Class Exercise 10"
         href: In-class_Ex/In_class_Ex10.html
+<<<<<<< HEAD
     - text: "Time Series Models"
       menu:
       - text: "Using ggplot, timetk"
@@ -49,4 +50,12 @@ navbar:
       - text: "Modeltime Methods"
         href: R4DSA/model_time.html
   
+=======
+    - text: "Data Science Models"
+      menu:
+      - text: "Time Series Data Analysis"
+        href: R4DSA/time_series.html
+      - text: "Advanced Time Series"
+        href: R4DSA/ets_arima.html
+>>>>>>> 4e0cc3d334c3664fea0e8a2634b5d3a4cbf6a582
 output: distill::distill_article
